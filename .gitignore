@@ -1,0 +1,8 @@
+.idea/*
+**/__pycache__/**
+*.ipynb_checkpoints*
+.coverage*
+coverage.xml
+build/*
+peaviner.egg-info/*
+dist/*

@@ -47,5 +47,5 @@ def meas_jacc(extents: Tuple[fbitarray], y: fbitarray):
 SCORES_NAMES = {
     'tp': meas_tp, 'tn': meas_tn, 'fp': meas_fp, 'fn': meas_fn,
     'tp_perc': meas_tp_perc, 'tn_perc': meas_tn_perc, 'fp_perc': meas_fp_perc, 'fn_perc': meas_fn_perc,
-    'F1': meas_f1, 'Jacc': meas_jacc
+    'F1': meas_f1, 'Jaccard': meas_jacc
 }

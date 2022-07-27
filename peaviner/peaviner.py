@@ -4,6 +4,7 @@ from typing import Tuple, FrozenSet
 import numpy as np
 from tqdm import tqdm
 from bitarray import frozenbitarray as fbitarray
+from . import scores
 
 IntPremType = Tuple[int, str, float]  # Feature_id, '>=' or '<', numeric threshold
 
@@ -63,6 +64,18 @@ class PeaViner:
         extents_prem_list = tuple([frozenset(prems) for prems in extents_prem_list])
 
         return extents, extents_prem_list
+
+    def form_atom_extent_stats(self, scores_='all', dataframe=True):
+        if scores_ == 'all':
+            scores_ = tuple(scores.SCORES_NAMES)
+
+        stats = np.array([scores.SCORES_NAMES[score](self.atom_extents, self.y) for score in scores_]).T
+
+        if dataframe:
+            import pandas as pd
+            stats = pd.DataFrame(stats, columns=scores_)
+            stats.index.name = 'extent_idx'
+        return stats
 
     def __repr__(self):
         if any([v is None for v in [self.gamma, self.y, self.atom_premises, self.atom_extents]]):

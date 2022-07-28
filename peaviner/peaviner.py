@@ -20,9 +20,68 @@ class PeaViner:
         self.y = fbitarray(y.tolist())
         self.gamma = self.y.count() / len(self.y)
 
-        self.atom_extents, self.atom_premises = self._generate_extents(X, use_tqdm)
+        self.atom_extents, self.atom_premises = self._generate_atomic_extents(X, use_tqdm)
 
-    def _generate_extents(self, X: np.ndarray, use_tqdm=False):
+    def form_extent_stats(self, extents: Tuple[fbitarray, ...] = None, scores_='all', dataframe=True):
+        extents = extents if extents is not None else self.atom_extents
+
+        if scores_ == 'all':
+            scores_ = tuple(scores.SCORES_NAMES)
+
+        stats = np.array([scores.SCORES_NAMES[score](extents, self.y) for score in scores_]).T
+
+        if dataframe:
+            import pandas as pd
+            stats = pd.DataFrame(stats, columns=scores_)
+            stats.index.name = 'extent_idx'
+        return stats
+
+    def generate_diextents(self, extents: Tuple[fbitarray, ...] = None, operations: tuple = ('^', 'v'), use_tqdm=False):
+        extents = extents if extents is not None else self.atom_extents
+
+        diextents_stat = {}
+
+        if use_tqdm:
+            n_ops = len(operations)
+            pbar = tqdm(total=len(extents)*(len(extents)-1)//2 * n_ops)
+
+        for i, a in enumerate(extents):
+            for j, b in enumerate(extents[i+1:]):
+                for op in operations:
+                    if op == '^':
+                        c = a & b
+                    elif op == 'v':
+                        c = a | b
+                    else:
+                        raise NotImplementedError(f'Operation {op} is not implemented')
+
+                    if c == a or c == b:
+                        continue
+
+                    op_stat = (i, j+i+1, op)
+
+                    if c in diextents_stat:
+                        diextents_stat[c].append(op_stat)
+                    else:
+                        diextents_stat[c] = [op_stat]
+
+                if use_tqdm:
+                    pbar.update(n_ops)
+
+        if use_tqdm:
+            pbar.close()
+
+        diextents = []
+        oper_stats = []
+        for ext, ops in diextents_stat.items():
+            diextents.append(ext)
+            oper_stats.append(tuple(ops))
+        diextents, oper_stats = tuple(diextents), tuple(diextents)
+
+        return diextents, oper_stats
+
+    @staticmethod
+    def _generate_atomic_extents(X: np.ndarray, use_tqdm=False):
         extents_i_map, extents_prem_list = {}, []  # extent -> extent_id
 
         ext_i = 0
@@ -64,18 +123,6 @@ class PeaViner:
         extents_prem_list = tuple([frozenset(prems) for prems in extents_prem_list])
 
         return extents, extents_prem_list
-
-    def form_atom_extent_stats(self, scores_='all', dataframe=True):
-        if scores_ == 'all':
-            scores_ = tuple(scores.SCORES_NAMES)
-
-        stats = np.array([scores.SCORES_NAMES[score](self.atom_extents, self.y) for score in scores_]).T
-
-        if dataframe:
-            import pandas as pd
-            stats = pd.DataFrame(stats, columns=scores_)
-            stats.index.name = 'extent_idx'
-        return stats
 
     def __repr__(self):
         if any([v is None for v in [self.gamma, self.y, self.atom_premises, self.atom_extents]]):

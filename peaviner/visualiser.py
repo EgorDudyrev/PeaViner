@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 @dataclass
 class PeaVis:
     ax: plt.Axes = None
@@ -28,24 +29,27 @@ class PeaVis:
         self.ax = ax
         self.gamma = gamma
 
-    def draw_thold(self, thold: float, score_name: str = 'Jaccard'):
+    def draw_thold(self, thold: float, score_name: str = 'Jaccard', color='violet'):
         if score_name == 'Jaccard':
             thold_x = self.gamma*(1-thold)/thold
             thold_y = self.gamma*thold
         else:
             return NotImplementedError('Only Jaccard score is implemented at the moment')
 
-        self.ax.plot([0, thold_x], [thold_y, self.gamma], label=r'$\theta: '+f"{thold:.2f}"+'$')
+        self.ax.plot(
+            [0, thold_x], [thold_y, self.gamma],
+            label=r'$\theta: '+f"{thold:.2f}"+'$', zorder=10, color=color
+        )
 
         return thold_x, thold_y
 
     def draw_zones(
-            self, thold_x, thold_y,
+            self, thold_x, thold_y, thold_color='violet',
             fill_zones=True, fill_alpha=0.2, zone_colors=('darkgreen', 'limegreen', 'yellow', 'orange', 'red'),
             caption_zones=True, caption_size=18,
     ):
-        self.ax.axvline(thold_x, linestyle='--')
-        self.ax.axhline(thold_y, linestyle='--')
+        self.ax.axvline(thold_x, linestyle='--', color=thold_color)
+        self.ax.axhline(thold_y, linestyle='--', color=thold_color)
 
         if fill_zones:
             self.ax.fill([thold_x, 1 - self.gamma, 1 - self.gamma, thold_x], [0, 0, thold_y, thold_y],

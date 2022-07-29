@@ -80,6 +80,49 @@ class PeaViner:
 
         return diextents, oper_stats
 
+    def compute_pairwise_tpfp_stats(self, extents: Tuple[fbitarray, ...] = None, use_tqdm=False):
+        from scipy import sparse
+
+        extents = extents if extents is not None else self.atom_extents
+
+        row, col = [], []
+        conj_data_tp, conj_data_fp, disj_data_tp, disj_data_fp = [], [], [], []
+
+        if use_tqdm:
+            pbar = tqdm(total=len(extents)*(len(extents)-1)//2)
+
+        for i, a in enumerate(extents):
+            for j, b in enumerate(extents[i+1:]):
+                c = a & b
+                if c == a or c == b:
+                    if use_tqdm:
+                        pbar.update(1)
+                    continue
+                row.append(i)
+                col.append(j)
+
+                conj_data_tp.append(scores.meas_tp(c, self.y))
+                conj_data_fp.append(scores.meas_fp(c, self.y))
+
+                c = a | b
+                disj_data_tp.append(scores.meas_tp(c, self.y))
+                disj_data_fp.append(scores.meas_fp(c, self.y))
+
+                if use_tqdm:
+                    pbar.update(1)
+
+        if use_tqdm:
+            pbar.close()
+
+        row, col = np.array(row), np.array(col)
+
+        conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx = [
+            sparse.csr_matrix((np.array(data), (row, col)))/len(self.y)
+            for data in [conj_data_tp, conj_data_fp, disj_data_tp, disj_data_fp]
+        ]
+
+        return conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx
+
     @staticmethod
     def _generate_atomic_extents(X: np.ndarray, use_tqdm=False):
         extents_i_map, extents_prem_list = {}, []  # extent -> extent_id

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple, FrozenSet
+from typing import Tuple, FrozenSet, Iterator
 
 import numpy as np
 from scipy import sparse
@@ -193,46 +193,44 @@ class PeaViner:
         return s
 
     @staticmethod
-    def count_potentials_type3_1(
-            gamma: float, thold: float,
+    def calc_alphas(tps: np.ndarray, thold: float, gamma: float) -> np.ndarray:
+        return tps/thold - gamma
+
+    @staticmethod
+    def calc_betas(fps: np.ndarray, thold: float, gamma: float) -> np.ndarray:
+        return thold/(gamma + fps)
+
+    def iterate_potentials_type3_1(
+            self, thold: float,
             tps: np.ndarray, fps: np.ndarray,
             conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
-    ) -> int:
-        '''Counting potential premises of type pqr'''
-        thold_tp, thold_fp = PeaViner.calc_thold_tpfp(gamma, thold, 'Jaccard')
+            use_tqdm: bool = False
+    ) -> Iterator[Tuple[int, int, int]]:
+        """Iterating potential premises of type pqr"""
+        gamma, omg = self.gamma, 1 - self.gamma
 
-        alphas = tps / thold - gamma
+        thold_tp, _ = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
 
+        alphas = self.calc_alphas(tps, thold, gamma)
         conj_alphas = conj_tps.copy()
-        conj_alphas.data = conj_alphas.data / thold - gamma
-
-        omg = 1 - gamma
-
-        n_combs = 0
+        conj_alphas.data = self.calc_alphas(conj_alphas.data, thold, gamma)
 
         potential_ps = (thold_tp <= tps).nonzero()[0]
 
-        for p in tqdm(potential_ps):
+        for p in tqdm(potential_ps, disable=not use_tqdm):
             tps_pq = conj_tps[p].toarray()[0]  # list of values for q
 
             potential_qs_flag = thold_tp <= tps_pq
             potential_qs = potential_qs_flag.nonzero()[0]
 
-            fp_p = fps[p]  # const
-            alpha_p = alphas[p]  # const
+            fp_p, alpha_p = fps[p], alphas[p]  # const
+            fps_r, alphas_r = fps, alphas  # list of values for r
+            fps_pr, alphas_pr = [x[p].toarray()[0] for x in [conj_fps, conj_alphas]]  # list of values for r
 
-            tps_pr = tps_pq
-            fps_r = fps  # list of values for r
-            alphas_r = alphas  # list of values for r
-
-            fps_pr = conj_fps[p].toarray()[0]  # list of values for r
-            alphas_pr = conj_alphas[p].toarray()[0]  # list of values for r
-
-            for q in tqdm(potential_qs, leave=False):
+            for q in potential_qs:
                 potential_rs_flg = potential_qs_flag.copy()
 
-                fp_pq = conj_fps[p, q]  # const
-                alpha_pq = conj_alphas[p, q]  # const
+                fp_pq, alpha_pq = conj_fps[p, q], conj_alphas[p, q]  # const
                 potential_rs_flg &= (fp_pq + fps_r - alpha_pq <= omg)
                 if not potential_rs_flg.any():
                     continue
@@ -241,12 +239,11 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                fp_q = fps[q]  # const
+                fp_q, alpha_q = fps[q], alphas[q]  # const
                 potential_rs_flg &= (fps_pr + fp_q - alphas_pr <= omg)
                 if not potential_rs_flg.any():
                     continue
 
-                alpha_q = alphas[q]  # const
                 potential_rs_flg &= (fps_pr + fp_q - alpha_q <= omg)
                 if not potential_rs_flg.any():
                     continue
@@ -256,13 +253,12 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                fps_qr = conj_fps[q].toarray()[0]  # list of values for r
-                alphas_qr = conj_alphas[q].toarray()[0]  # list of values for r
+                fps_qr, alphas_qr = [x[q].toarray()[0] for x in [conj_fps, conj_alphas]]  # list of values for r
                 potential_rs_flg &= (fps_qr + fp_p - alphas_qr <= omg)
                 if not potential_rs_flg.any():
                     continue
 
                 potential_rs_flg &= (fps_qr + fp_p - alpha_p <= omg)
-                n_combs += potential_rs_flg.sum()
-
-        return n_combs
+                potential_rs = potential_rs_flg.nonzero()[0]
+                for r in potential_rs:
+                    yield p, q, r

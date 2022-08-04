@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Tuple, FrozenSet
 
 import numpy as np
+from scipy import sparse
 from tqdm import tqdm
 from bitarray import frozenbitarray as fbitarray
 from . import scores
@@ -85,8 +86,6 @@ class PeaViner:
         return diextents, oper_stats
 
     def compute_pairwise_tpfp_stats(self, extents: Tuple[fbitarray, ...] = None, use_tqdm=False):
-        from scipy import sparse
-
         extents = extents if extents is not None else self.atom_extents
         n_exts = len(extents)
 
@@ -127,6 +126,15 @@ class PeaViner:
         ]
 
         return conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx
+
+    @staticmethod
+    def calc_thold_tpfp(gamma: float, thold: float, score_name: str = 'Jaccard') -> Tuple[float, float]:
+        if score_name == 'Jaccard':
+            thold_fp = gamma*(1-thold)/thold
+            thold_tp = gamma*thold
+        else:
+            raise NotImplementedError('Only Jaccard score is implemented at the moment')
+        return thold_tp, thold_fp
 
     @staticmethod
     def _generate_atomic_extents(X: np.ndarray, use_tqdm=False):
@@ -183,3 +191,78 @@ class PeaViner:
             f"; #atom_extents: {len(self.atom_extents):,}" + \
             f"; #atom_premises: {sum([len(ps) for ps in self.atom_premises]):,}"
         return s
+
+    @staticmethod
+    def count_potentials_type3_1(
+            gamma: float, thold: float,
+            tps: np.ndarray, fps: np.ndarray,
+            conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
+    ) -> int:
+        '''Counting potential premises of type pqr'''
+        thold_tp, thold_fp = PeaViner.calc_thold_tpfp(gamma, thold, 'Jaccard')
+
+        alphas = tps / thold - gamma
+
+        conj_alphas = conj_tps.copy()
+        conj_alphas.data = conj_alphas.data / thold - gamma
+
+        omg = 1 - gamma
+
+        n_combs = 0
+
+        potential_ps = (thold_tp <= tps).nonzero()[0]
+
+        for p in tqdm(potential_ps):
+            tps_pq = conj_tps[p].toarray()[0]  # list of values for q
+
+            potential_qs_flag = thold_tp <= tps_pq
+            potential_qs = potential_qs_flag.nonzero()[0]
+
+            fp_p = fps[p]  # const
+            alpha_p = alphas[p]  # const
+
+            tps_pr = tps_pq
+            fps_r = fps  # list of values for r
+            alphas_r = alphas  # list of values for r
+
+            fps_pr = conj_fps[p].toarray()[0]  # list of values for r
+            alphas_pr = conj_alphas[p].toarray()[0]  # list of values for r
+
+            for q in tqdm(potential_qs, leave=False):
+                potential_rs_flg = potential_qs_flag.copy()
+
+                fp_pq = conj_fps[p, q]  # const
+                alpha_pq = conj_alphas[p, q]  # const
+                potential_rs_flg &= (fp_pq + fps_r - alpha_pq <= omg)
+                if not potential_rs_flg.any():
+                    continue
+
+                potential_rs_flg &= (fp_pq + fps_r - alphas_r <= omg)
+                if not potential_rs_flg.any():
+                    continue
+
+                fp_q = fps[q]  # const
+                potential_rs_flg &= (fps_pr + fp_q - alphas_pr <= omg)
+                if not potential_rs_flg.any():
+                    continue
+
+                alpha_q = alphas[q]  # const
+                potential_rs_flg &= (fps_pr + fp_q - alpha_q <= omg)
+                if not potential_rs_flg.any():
+                    continue
+
+                tps_qr = conj_tps[q].toarray()[0]  # list of values for r
+                potential_rs_flg &= thold_tp <= tps_qr
+                if not potential_rs_flg.any():
+                    continue
+
+                fps_qr = conj_fps[q].toarray()[0]  # list of values for r
+                alphas_qr = conj_alphas[q].toarray()[0]  # list of values for r
+                potential_rs_flg &= (fps_qr + fp_p - alphas_qr <= omg)
+                if not potential_rs_flg.any():
+                    continue
+
+                potential_rs_flg &= (fps_qr + fp_p - alpha_p <= omg)
+                n_combs += potential_rs_flg.sum()
+
+        return n_combs

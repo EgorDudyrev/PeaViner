@@ -30,11 +30,8 @@ class PeaVis:
         self.gamma = gamma
 
     def draw_thold(self, thold: float, score_name: str = 'Jaccard', color='violet'):
-        if score_name == 'Jaccard':
-            thold_x = self.gamma*(1-thold)/thold
-            thold_y = self.gamma*thold
-        else:
-            return NotImplementedError('Only Jaccard score is implemented at the moment')
+        from .peaviner import PeaViner
+        thold_y, thold_x = PeaViner.calc_thold_tpfp(self.gamma, thold, score_name)
 
         self.ax.plot(
             [0, thold_x], [thold_y, self.gamma],

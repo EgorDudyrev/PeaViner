@@ -215,7 +215,7 @@ class PeaViner:
         conj_alphas = conj_tps.copy()
         conj_alphas.data = self.calc_alphas(conj_alphas.data, thold, gamma)
 
-        potential_ps = (thold_tp <= tps).nonzero()[0]
+        potential_ps = (thold_tp <= conj_tps).sum(1).nonzero()[0]
 
         for p in tqdm(potential_ps, disable=not use_tqdm):
             tps_pq = conj_tps[p].toarray()[0]  # list of values for q
@@ -225,7 +225,7 @@ class PeaViner:
 
             fp_p, alpha_p = fps[p], alphas[p]  # const
             fps_r, alphas_r = fps, alphas  # list of values for r
-            fps_pr, alphas_pr = [x[p].toarray()[0] for x in [conj_fps, conj_alphas]]  # list of values for r
+            fps_pr, alphas_pr = [mx[p].toarray()[0] for mx in [conj_fps, conj_alphas]]  # list of values for r
 
             for q in potential_qs:
                 potential_rs_flg = potential_qs_flag.copy()
@@ -253,12 +253,79 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                fps_qr, alphas_qr = [x[q].toarray()[0] for x in [conj_fps, conj_alphas]]  # list of values for r
+                fps_qr, alphas_qr = [mx[q].toarray()[0] for mx in [conj_fps, conj_alphas]]  # list of values for r
                 potential_rs_flg &= (fps_qr + fp_p - alphas_qr <= omg)
                 if not potential_rs_flg.any():
                     continue
 
                 potential_rs_flg &= (fps_qr + fp_p - alpha_p <= omg)
+                potential_rs = potential_rs_flg.nonzero()[0]
+                for r in potential_rs:
+                    yield p, q, r
+
+    def iterate_potentials_type3_2(
+            self, thold: float,
+            tps: np.ndarray, fps: np.ndarray,
+            conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
+            disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
+            use_tqdm: bool = False
+    ) -> Iterator[Tuple[int, int, int]]:
+        """Iterating potential premises of type pqr"""
+        gamma, omg = self.gamma, 1 - self.gamma
+
+        thold_tp, thold_fp = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
+
+        alphas = self.calc_alphas(tps, thold, gamma)
+        disj_alphas = disj_tps.copy()
+        disj_alphas.data = self.calc_alphas(disj_alphas.data, thold, gamma)
+
+        betas = self.calc_betas(fps, thold, gamma)
+        conj_betas = conj_fps.copy()
+        conj_betas.data = self.calc_betas(conj_fps.data, thold, gamma)
+
+        potential_ps = (thold_tp <= conj_tps).sum(1).nonzero()[0]
+
+        for p in tqdm(potential_ps, disable=not use_tqdm):
+            fps_pq = conj_fps[p].toarray()[0]   # list of values for q
+
+            potential_qs_flag = fps_pq <= thold_fp
+            potential_qs = potential_qs_flag.nonzero()[0]
+
+            tps_r, fps_r, alphas_r, betas_r = tps, fps, alphas, betas  # list of values for r
+            tps_p_r, fps_p_r = [mx[p].toarray()[0] for mx in [disj_tps, disj_fps]]  # list of values for r
+
+            for q in potential_qs:
+                potential_rs_flg = (fps_r <= thold_fp)
+
+                tp_pq, beta_pq, alpha_p_q = conj_tps[p, q], conj_betas[p, q], disj_alphas[p, q]
+
+                potential_rs_flg &= (0 <= tp_pq + tps_r - beta_pq)
+                if not potential_rs_flg.any():
+                    continue
+
+                potential_rs_flg &= (0 <= tp_pq + tps_r - betas_r)
+                if not potential_rs_flg.any():
+                    continue
+
+                potential_rs_flg &= (thold_tp <= tps_p_r)
+                if not potential_rs_flg.any():
+                    continue
+
+                tps_q_r = disj_tps[q].toarray()[0]
+                potential_rs_flg &= (thold_tp <= tps_q_r)
+                if not potential_rs_flg.any():
+                    continue
+
+                fps_q_r = disj_fps[q].toarray()[0]
+                potential_rs_flg &= (fps_p_r + fps_q_r - alpha_p_q <= omg)
+                if not potential_rs_flg.any():
+                    continue
+
+                alphas_q_r = disj_alphas[q].toarray()[0]
+                potential_rs_flg &= (fps_p_r + fps_q_r - alphas_q_r <= omg)
+                if not potential_rs_flg.any():
+                    continue
+
                 potential_rs = potential_rs_flg.nonzero()[0]
                 for r in potential_rs:
                     yield p, q, r

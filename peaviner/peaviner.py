@@ -15,12 +15,16 @@ class PeaViner:
     atom_premises: Tuple[FrozenSet[IntPremType], ...] = None  # For each atomic extent, list its premises
     atom_extents: Tuple[fbitarray, ...] = None  # Tuple of extents that can be obtained by a single premise
     y: fbitarray = None  # Target labels
+    score_func: str = 'Jaccard'  # Scoring function to maximize
 
     def load_dataset(self, X: np.ndarray, y: np.ndarray, use_tqdm=False):
         self.y = fbitarray(y.tolist())
         self.gamma = self.y.count() / len(self.y)
 
         self.atom_extents, self.atom_premises = self._generate_atomic_extents(X, use_tqdm)
+        extent_order = (-scores.SCORES_NAMES[self.score_func](self.atom_extents, self.y)).argsort()
+        self.atom_extents, self.atom_premises = [tuple([lst[i] for i in extent_order])
+                                                 for lst in [self.atom_extents, self.atom_premises]]
 
     def form_extent_stats(self, extents: Tuple[fbitarray, ...] = None, scores_='all', dataframe=True):
         extents = extents if extents is not None else self.atom_extents
@@ -84,12 +88,13 @@ class PeaViner:
         from scipy import sparse
 
         extents = extents if extents is not None else self.atom_extents
+        n_exts = len(extents)
 
         row, col = [], []
         conj_data_tp, conj_data_fp, disj_data_tp, disj_data_fp = [], [], [], []
 
         if use_tqdm:
-            pbar = tqdm(total=len(extents)*(len(extents)-1)//2)
+            pbar = tqdm(total=n_exts*(n_exts-1)//2)
 
         for i, a in enumerate(extents):
             for j, b in enumerate(extents[i+1:]):
@@ -99,7 +104,7 @@ class PeaViner:
                         pbar.update(1)
                     continue
                 row.append(i)
-                col.append(j)
+                col.append(j+i+1)
 
                 conj_data_tp.append(scores.meas_tp(c, self.y))
                 conj_data_fp.append(scores.meas_fp(c, self.y))
@@ -117,7 +122,7 @@ class PeaViner:
         row, col = np.array(row), np.array(col)
 
         conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx = [
-            sparse.csr_matrix((np.array(data), (row, col)))/len(self.y)
+            sparse.csr_matrix((np.array(data), (row, col)), shape=(n_exts, n_exts))/len(self.y)
             for data in [conj_data_tp, conj_data_fp, disj_data_tp, disj_data_fp]
         ]
 

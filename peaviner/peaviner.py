@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple, FrozenSet, Iterator
+from typing import Tuple, FrozenSet, Iterator, Generator
 
 import numpy as np
 from scipy import sparse
@@ -102,15 +102,21 @@ class PeaViner:
                     if use_tqdm:
                         pbar.update(1)
                     continue
+
                 row.append(i)
                 col.append(j+i+1)
 
-                conj_data_tp.append(scores.meas_tp(c, self.y))
-                conj_data_fp.append(scores.meas_fp(c, self.y))
+                row.append(j+i+1)
+                col.append(i)
+
+                for _ in range(2):
+                    conj_data_tp.append(scores.meas_tp(c, self.y))
+                    conj_data_fp.append(scores.meas_fp(c, self.y))
 
                 c = a | b
-                disj_data_tp.append(scores.meas_tp(c, self.y))
-                disj_data_fp.append(scores.meas_fp(c, self.y))
+                for _ in range(2):
+                    disj_data_tp.append(scores.meas_tp(c, self.y))
+                    disj_data_fp.append(scores.meas_fp(c, self.y))
 
                 if use_tqdm:
                     pbar.update(1)
@@ -124,6 +130,12 @@ class PeaViner:
             sparse.csr_matrix((np.array(data), (row, col)), shape=(n_exts, n_exts))/len(self.y)
             for data in [conj_data_tp, conj_data_fp, disj_data_tp, disj_data_fp]
         ]
+        #conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx = [
+        #    mx + mx.T
+        #    for mx in [conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx]
+        #]
+        assert len(conj_tp_mx.data) == len(conj_fp_mx.data)
+        assert len(disj_tp_mx.data) == len(disj_fp_mx.data)
 
         return conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx
 
@@ -201,22 +213,25 @@ class PeaViner:
         return thold/(gamma + fps)
 
     def iterate_potentials_type3_1(
-            self, thold: float,
+            self,
+            thold: float, thold_tp: float,
             tps: np.ndarray, fps: np.ndarray,
             conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
             use_tqdm: bool = False
-    ) -> Iterator[Tuple[int, int, int]]:
+    ) -> Generator[Tuple[int, int, int], Tuple[float, float, float], None]:
         """Iterating potential premises of type pqr"""
+        yield None  # Placeholder yield
+
         gamma, omg = self.gamma, 1 - self.gamma
 
-        thold_tp, _ = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
-
+        ext_ids = np.arange(len(tps))
         potential_ps = (thold_tp <= conj_tps).sum(1).nonzero()[0]
 
         for p in tqdm(potential_ps, disable=not use_tqdm, desc='Iter pqr'):
             tps_pq = conj_tps[p].toarray()[0]  # list of values for q
 
             potential_qs_flag = thold_tp <= tps_pq
+            potential_qs_flag &= p < ext_ids  # lexicographical order
             if not potential_qs_flag.any():
                 continue
 
@@ -228,6 +243,7 @@ class PeaViner:
 
             for q in potential_qs:
                 potential_rs_flg = potential_qs_flag.copy()
+                potential_rs_flg &= q < ext_ids  # lexicographical order
 
                 fp_pq, alpha_pq = conj_fps[p, q], self.calc_alphas(conj_tps[p, q], thold, gamma)  # const
                 potential_rs_flg &= (fp_pq + fps_r - alpha_pq <= omg)
@@ -264,26 +280,29 @@ class PeaViner:
                 potential_rs_flg &= (fps_qr + fp_p - alpha_p <= omg)
                 potential_rs = potential_rs_flg.nonzero()[0]
                 for r in potential_rs:
-                    yield p, q, r
+                    thold, thold_tp, _ = yield p, q, r
 
     def iterate_potentials_type3_2(
-            self, thold: float,
+            self,
+            thold: float, thold_tp: float, thold_fp: float,
             tps: np.ndarray, fps: np.ndarray,
             conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
             disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
             use_tqdm: bool = False
-    ) -> Iterator[Tuple[int, int, int]]:
+    ) -> Generator[Tuple[int, int, int], Tuple[float, float, float], None]:
         """Iterating potential premises of type pq|r"""
+        yield None
+
         gamma, omg = self.gamma, 1 - self.gamma
 
-        thold_tp, thold_fp = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
-
+        ext_ids = np.arange(len(tps))
         potential_ps = (thold_tp <= conj_tps).sum(1).nonzero()[0]
 
         for p in tqdm(potential_ps, disable=not use_tqdm, desc='Iter pq|r'):
             fps_pq = conj_fps[p].toarray()[0]   # list of values for q
 
             potential_qs_flag = fps_pq <= thold_fp
+            potential_qs_flag &= p < ext_ids  # lexicographical order
             if not potential_qs_flag.any():
                 continue
 
@@ -329,19 +348,22 @@ class PeaViner:
 
                 potential_rs = potential_rs_flg.nonzero()[0]
                 for r in potential_rs:
-                    yield p, q, r
+                    thold, thold_tp, thold_fp = yield p, q, r
 
     def iterate_potentials_type3_3(
-            self, thold: float,
+            self,
+            thold: float, thold_tp: float, thold_fp: float,
             tps: np.ndarray, fps: np.ndarray,
             conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
             disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
             use_tqdm: bool = False
-    ) -> Iterator[Tuple[int, int, int]]:
+    ) -> Generator[Tuple[int, int, int], Tuple[float, float, float], None]:
         """Iterating potential premises of type (p|q)r"""
+        yield None  # Placeholder yield
+
         gamma, omg = self.gamma, 1 - self.gamma
 
-        thold_tp, thold_fp = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
+        ext_ids = np.arange(len(tps))
 
         potential_ps_flg = np.array((thold_tp <= disj_tps).sum(1) > 0).flatten()
         conj_tns = conj_fps.copy()
@@ -355,6 +377,7 @@ class PeaViner:
             tps_p_q = disj_tps[p].toarray()[0]   # list of values for q
 
             potential_qs_flag = thold_tp <= tps_p_q
+            potential_qs_flag &= p < ext_ids  # lexicographical order
             if not potential_qs_flag.any():
                 continue
 
@@ -369,12 +392,12 @@ class PeaViner:
                     continue
 
                 fp_p_q = disj_fps[p, q]
-                alpha_p_q = self.calc_alphas(disj_tps[p, q], thold, gamma)
                 alphas_r = self.calc_alphas(tps, thold, gamma)
                 potential_rs_flg &= (fp_p_q + fps_r - alphas_r <= omg)
                 if not potential_rs_flg.any():
                     continue
 
+                alpha_p_q = self.calc_alphas(disj_tps[p, q], thold, gamma)
                 potential_rs_flg &= (fp_p_q + fps_r - alpha_p_q <= omg)
                 if not potential_rs_flg.any():
                     continue
@@ -401,18 +424,21 @@ class PeaViner:
 
                 potential_rs = potential_rs_flg.nonzero()[0]
                 for r in potential_rs:
-                    yield p, q, r
+                    thold, thold_tp, thold_fp = yield p, q, r
 
     def iterate_potentials_type3_4(
-            self, thold: float,
+            self,
+            thold: float, thold_fp: float,
             tps: np.ndarray, fps: np.ndarray,
             disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
             use_tqdm: bool = False
-    ) -> Iterator[Tuple[int, int, int]]:
+    ) -> Generator[Tuple[int, int, int], Tuple[float, float, float], None]:
         """Iterating potential premises of type p|q|r"""
+        yield None  # Placeholder yield
+
         gamma, omg = self.gamma, 1 - self.gamma
 
-        thold_tp, thold_fp = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
+        ext_ids = np.arange(len(tps))
 
         disj_tns = disj_fps.copy()
         disj_tns.data = omg - disj_tns.data
@@ -425,6 +451,7 @@ class PeaViner:
             fps_p_q = disj_fps[p].toarray()[0]  # list of values for q
 
             potential_qs_flag = fps_p_q <= thold_fp
+            potential_qs_flag &= p < ext_ids  # lexicographical order
             if not potential_qs_flag.any():
                 continue
 
@@ -436,6 +463,7 @@ class PeaViner:
 
             for q in potential_qs:
                 potential_rs_flg = (fps_p_r <= thold_fp)
+                potential_rs_flg &= q < ext_ids  # lexicographical order
                 if not potential_rs_flg.any():
                     continue
 
@@ -479,7 +507,7 @@ class PeaViner:
 
                 potential_rs = potential_rs_flg.nonzero()[0]
                 for r in potential_rs:
-                    yield p, q, r
+                    thold, _, thold_fp = yield p, q, r
 
     def count_potentials_size3(
             self, thold: float,
@@ -488,20 +516,28 @@ class PeaViner:
             disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
             types=(1, 2, 3, 4), use_tqdm: bool = False
     ) -> int:
-        gen_t3_1 = self.iterate_potentials_type3_1(thold, tps, fps, conj_tps, conj_fps, use_tqdm)
-        gen_t3_2 = self.iterate_potentials_type3_2(thold, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
-        gen_t3_3 = self.iterate_potentials_type3_3(thold, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
-        gen_t3_4 = self.iterate_potentials_type3_4(thold, tps, fps, disj_tps, disj_fps, use_tqdm)
+        thold_tp, thold_fp = self.calc_thold_tpfp(self.gamma, thold, 'Jaccard')
+
+        gen_t3_1 = self.iterate_potentials_type3_1(
+            thold, thold_tp, tps, fps, conj_tps, conj_fps, use_tqdm)
+        gen_t3_2 = self.iterate_potentials_type3_2(
+            thold, thold_tp, thold_fp, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
+        gen_t3_3 = self.iterate_potentials_type3_3(
+            thold, thold_tp, thold_fp, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
+        gen_t3_4 = self.iterate_potentials_type3_4(
+            thold, thold_fp, tps, fps, disj_tps, disj_fps, use_tqdm)
 
         cnt = 0
-        if 1 in types:
-            cnt += sum(1 for _ in gen_t3_1)
-        if 2 in types:
-            cnt += sum(1 for _ in gen_t3_2)
-        if 3 in types:
-            cnt += sum(1 for _ in gen_t3_3)
-        if 4 in types:
-            cnt += sum(1 for _ in gen_t3_4)
+        for t in types:
+            gen = (None, gen_t3_1, gen_t3_2, gen_t3_3, gen_t3_4)[t]
+            next(gen)
+            while True:
+                try:
+                    _ = gen.send((thold, thold_tp, thold_fp))
+                except StopIteration:
+                    break
+                cnt += 1
+
         return cnt
 
     def find_best_premises_size3(
@@ -511,12 +547,7 @@ class PeaViner:
             disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
             types=(1, 2, 3, 4), use_tqdm: bool = False
     ) -> Tuple[Tuple[Tuple[int, int, int], int, float], ...]:
-        gen_dict = {
-            1: self.iterate_potentials_type3_1(thold, tps, fps, conj_tps, conj_fps, use_tqdm),
-            2: self.iterate_potentials_type3_2(thold, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm),
-            3: self.iterate_potentials_type3_3(thold, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm),
-            4: self.iterate_potentials_type3_4(thold, tps, fps, disj_tps, disj_fps, use_tqdm)
-        }
+        thold_tp, thold_fp = self.calc_thold_tpfp(self.gamma, thold, 'Jaccard')
 
         aexts = self.atom_extents
         ext_f_dict = {
@@ -528,9 +559,26 @@ class PeaViner:
 
         best_premises = []
         for t in types:
-            gen, ext_f = gen_dict[t], ext_f_dict[t]
+            ext_f = ext_f_dict[t]
 
-            for comb in gen:
+            if t == 1:
+                gen = self.iterate_potentials_type3_1(thold, thold_tp, tps, fps, conj_tps, conj_fps, use_tqdm)
+            elif t == 2:
+                gen = self.iterate_potentials_type3_2(
+                    thold, thold_tp, thold_fp, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
+            elif t == 3:
+                gen = self.iterate_potentials_type3_3(
+                    thold, thold_tp, thold_fp, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
+            else:  # t == 4:
+                gen = self.iterate_potentials_type3_4(thold, thold_fp, tps, fps, disj_tps, disj_fps, use_tqdm)
+            next(gen)
+
+            while True:
+                try:
+                    comb = gen.send((thold, thold_tp, thold_fp))
+                except StopIteration:
+                    break
+
                 ext = ext_f(*comb)
                 score = scores.meas_jacc(ext, self.y)
                 if score >= thold:

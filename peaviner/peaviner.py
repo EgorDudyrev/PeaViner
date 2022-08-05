@@ -513,3 +513,39 @@ class PeaViner:
         if 4 in types:
             cnt += sum(1 for _ in gen_t3_4)
         return cnt
+
+    def find_best_premises_size3(
+            self, thold: float, k: int,
+            tps: np.ndarray, fps: np.ndarray,
+            conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
+            disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
+            types=(1, 2, 3, 4), use_tqdm: bool = False
+    ) -> Tuple[Tuple[Tuple[int, int, int], int, float], ...]:
+        gen_dict = {
+            1: self.iterate_potentials_type3_1(thold, tps, fps, conj_tps, conj_fps, use_tqdm),
+            2: self.iterate_potentials_type3_2(thold, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm),
+            3: self.iterate_potentials_type3_3(thold, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm),
+            4: self.iterate_potentials_type3_4(thold, tps, fps, disj_tps, disj_fps, use_tqdm)
+        }
+
+        aexts = self.atom_extents
+        ext_f_dict = {
+            1: lambda p, q, r: aexts[p] & aexts[q] & aexts[r],
+            2: lambda p, q, r: aexts[p] & aexts[q] | aexts[r],
+            3: lambda p, q, r: (aexts[p] | aexts[q]) & aexts[r],
+            4: lambda p, q, r: aexts[p] | aexts[q] | aexts[r]
+        }
+
+        best_premises = []
+        for t in types:
+            gen, ext_f = gen_dict[t], ext_f_dict[t]
+
+            for comb in gen:
+                ext = ext_f(*comb)
+                score = scores.meas_jacc(ext, self.y)
+                if score >= thold:
+                    best_premises.append((comb, t, score))
+
+            best_premises = sorted(best_premises, key=lambda prem_data: -prem_data[2])[:k]
+
+        return tuple(best_premises)

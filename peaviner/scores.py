@@ -56,6 +56,10 @@ def meas_f1s(extents: Tuple[fbitarray, ...], y: fbitarray):
     return 2*np.array([(ext & y).count()/(y.count() + ext.count()) for ext in extents])
 
 
+def meas_jacc(extent: fbitarray, y: fbitarray):
+    return (extent & y).count()/(extent | y).count()
+
+
 def meas_jaccs(extents: Tuple[fbitarray, ...], y: fbitarray):
     return np.array([(ext & y).count()/(ext | y).count() for ext in extents])
 

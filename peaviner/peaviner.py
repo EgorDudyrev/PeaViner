@@ -217,7 +217,7 @@ class PeaViner:
 
         potential_ps = (thold_tp <= conj_tps).sum(1).nonzero()[0]
 
-        for p in tqdm(potential_ps, disable=not use_tqdm):
+        for p in tqdm(potential_ps, disable=not use_tqdm, desc='Iter pqr'):
             tps_pq = conj_tps[p].toarray()[0]  # list of values for q
 
             potential_qs_flag = thold_tp <= tps_pq
@@ -288,7 +288,7 @@ class PeaViner:
 
         potential_ps = (thold_tp <= conj_tps).sum(1).nonzero()[0]
 
-        for p in tqdm(potential_ps, disable=not use_tqdm):
+        for p in tqdm(potential_ps, disable=not use_tqdm, desc='Iter pq|r'):
             fps_pq = conj_fps[p].toarray()[0]   # list of values for q
 
             potential_qs_flag = fps_pq <= thold_fp
@@ -363,7 +363,7 @@ class PeaViner:
         del conj_tns, thold_tn
         potential_ps = potential_ps_flg.nonzero()[0]
 
-        for p in tqdm(potential_ps, disable=not use_tqdm):
+        for p in tqdm(potential_ps, disable=not use_tqdm, desc='Iter (p|q)r'):
             tps_p_q = disj_tps[p].toarray()[0]   # list of values for q
 
             potential_qs_flag = thold_tp <= tps_p_q
@@ -434,7 +434,7 @@ class PeaViner:
         del disj_tns, thold_tn
         potential_ps = potential_ps_flg.nonzero()[0]
 
-        for p in tqdm(potential_ps, disable=not use_tqdm):
+        for p in tqdm(potential_ps, disable=not use_tqdm, desc='Iter p|q|r'):
             fps_p_q = disj_fps[p].toarray()[0]  # list of values for q
 
             potential_qs_flag = fps_p_q <= thold_fp
@@ -490,3 +490,26 @@ class PeaViner:
                 potential_rs = potential_rs_flg.nonzero()[0]
                 for r in potential_rs:
                     yield p, q, r
+
+    def count_potentials_size3(
+            self, thold: float,
+            tps: np.ndarray, fps: np.ndarray,
+            conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
+            disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
+            types=(1, 2, 3, 4), use_tqdm: bool = False
+    ) -> int:
+        gen_t3_1 = self.iterate_potentials_type3_1(thold, tps, fps, conj_tps, conj_fps, use_tqdm)
+        gen_t3_2 = self.iterate_potentials_type3_2(thold, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
+        gen_t3_3 = self.iterate_potentials_type3_3(thold, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
+        gen_t3_4 = self.iterate_potentials_type3_4(thold, tps, fps, disj_tps, disj_fps, use_tqdm)
+
+        cnt = 0
+        if 1 in types:
+            cnt += sum(1 for _ in gen_t3_1)
+        if 2 in types:
+            cnt += sum(1 for _ in gen_t3_2)
+        if 3 in types:
+            cnt += sum(1 for _ in gen_t3_3)
+        if 4 in types:
+            cnt += sum(1 for _ in gen_t3_4)
+        return cnt

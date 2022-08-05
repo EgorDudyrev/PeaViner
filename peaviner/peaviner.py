@@ -411,3 +411,82 @@ class PeaViner:
                 potential_rs = potential_rs_flg.nonzero()[0]
                 for r in potential_rs:
                     yield p, q, r
+
+    def iterate_potentials_type3_4(
+            self, thold: float,
+            tps: np.ndarray, fps: np.ndarray,
+            disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
+            use_tqdm: bool = False
+    ) -> Iterator[Tuple[int, int, int]]:
+        """Iterating potential premises of type p|q|r"""
+        gamma, omg = self.gamma, 1 - self.gamma
+
+        thold_tp, thold_fp = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
+
+        betas = self.calc_betas(fps, thold, gamma)
+        disj_betas = disj_fps.copy()
+        disj_betas.data = self.calc_betas(disj_fps.data, thold, gamma)
+
+        disj_tns = disj_fps.copy()
+        disj_tns.data = omg - disj_tns.data
+        thold_tn = omg - thold_fp
+        potential_ps_flg = np.array((disj_tns >= thold_tn).sum(1) > 0).flatten()
+        del disj_tns, thold_tn
+        potential_ps = potential_ps_flg.nonzero()[0]
+
+        for p in tqdm(potential_ps, disable=not use_tqdm):
+            fps_p_q = disj_fps[p].toarray()[0]  # list of values for q
+
+            potential_qs_flag = fps_p_q <= thold_fp
+            if not potential_qs_flag.any():
+                continue
+
+            potential_qs = potential_qs_flag.nonzero()[0]
+
+            tp_p, beta_p = tps[p], betas[p]
+            tps_r, betas_r = tps, betas
+            fps_p_r = disj_fps[p].toarray()[0]
+
+            for q in potential_qs:
+                potential_rs_flg = (fps_p_r <= thold_fp)
+                if not potential_rs_flg.any():
+                    continue
+
+                tp_p_q, beta_p_q = disj_tps[p, q], disj_betas[p, q]
+                potential_rs_flg &= (0 <= tp_p_q + tps_r - beta_p_q)
+                if not potential_rs_flg.any():
+                    continue
+
+                potential_rs_flg &= (0 <= tp_p_q + tps_r - betas_r)
+                if not potential_rs_flg.any():
+                    continue
+
+                fps_q_r = disj_fps[q].toarray()[0]
+                potential_rs_flg &= (fps_q_r <= thold_fp)
+                if not potential_rs_flg.any():
+                    continue
+
+                tp_q, beta_q = tps[q], betas[q]
+                tps_p_r = disj_tps[p].toarray()[0]
+                potential_rs_flg &= (0 <= tps_p_r + tp_q - beta_q)
+                if not potential_rs_flg.any():
+                    continue
+
+                betas_p_r = disj_betas[p].toarray()[0]
+                potential_rs_flg &= (0 <= tps_p_r + tp_q - betas_p_r)
+                if not potential_rs_flg.any():
+                    continue
+
+                tps_q_r = disj_tps[q].toarray()[0]
+                potential_rs_flg &= (0 <= tps_q_r + tp_p - beta_p)
+                if not potential_rs_flg.any():
+                    continue
+
+                betas_q_r = disj_betas[q].toarray()[0]
+                potential_rs_flg &= (0 <= tps_q_r + tp_p - betas_q_r)
+                if not potential_rs_flg.any():
+                    continue
+
+                potential_rs = potential_rs_flg.nonzero()[0]
+                for r in potential_rs:
+                    yield p, q, r

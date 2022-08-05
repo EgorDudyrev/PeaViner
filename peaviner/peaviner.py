@@ -211,10 +211,6 @@ class PeaViner:
 
         thold_tp, _ = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
 
-        alphas = self.calc_alphas(tps, thold, gamma)
-        conj_alphas = conj_tps.copy()
-        conj_alphas.data = self.calc_alphas(conj_alphas.data, thold, gamma)
-
         potential_ps = (thold_tp <= conj_tps).sum(1).nonzero()[0]
 
         for p in tqdm(potential_ps, disable=not use_tqdm, desc='Iter pqr'):
@@ -226,23 +222,25 @@ class PeaViner:
 
             potential_qs = potential_qs_flag.nonzero()[0]
 
-            fp_p, alpha_p = fps[p], alphas[p]  # const
-            fps_r, alphas_r = fps, alphas  # list of values for r
-            fps_pr, alphas_pr = [mx[p].toarray()[0] for mx in [conj_fps, conj_alphas]]  # list of values for r
+            fp_p = fps[p]
+            fps_r = fps
+            tps_pr, fps_pr = [mx[p].toarray()[0] for mx in [conj_tps, conj_fps]]
 
             for q in potential_qs:
                 potential_rs_flg = potential_qs_flag.copy()
 
-                fp_pq, alpha_pq = conj_fps[p, q], conj_alphas[p, q]  # const
+                fp_pq, alpha_pq = conj_fps[p, q], self.calc_alphas(conj_tps[p, q], thold, gamma)  # const
                 potential_rs_flg &= (fp_pq + fps_r - alpha_pq <= omg)
                 if not potential_rs_flg.any():
                     continue
 
+                alphas = alphas_r = self.calc_alphas(tps, thold, gamma)
                 potential_rs_flg &= (fp_pq + fps_r - alphas_r <= omg)
                 if not potential_rs_flg.any():
                     continue
 
-                fp_q, alpha_q = fps[q], alphas[q]  # const
+                fp_q, alpha_q = fps[q],  alphas[q]  # const
+                alphas_pr = self.calc_alphas(tps_pr, thold, gamma)
                 potential_rs_flg &= (fps_pr + fp_q - alphas_pr <= omg)
                 if not potential_rs_flg.any():
                     continue
@@ -256,11 +254,13 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                fps_qr, alphas_qr = [mx[q].toarray()[0] for mx in [conj_fps, conj_alphas]]  # list of values for r
+                fps_qr = conj_fps[q].toarray()[0]  # list of values for r
+                alphas_qr = self.calc_alphas(tps_qr, thold, gamma)
                 potential_rs_flg &= (fps_qr + fp_p - alphas_qr <= omg)
                 if not potential_rs_flg.any():
                     continue
 
+                alpha_p = alphas[p]
                 potential_rs_flg &= (fps_qr + fp_p - alpha_p <= omg)
                 potential_rs = potential_rs_flg.nonzero()[0]
                 for r in potential_rs:
@@ -278,14 +278,6 @@ class PeaViner:
 
         thold_tp, thold_fp = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
 
-        alphas = self.calc_alphas(tps, thold, gamma)
-        disj_alphas = disj_tps.copy()
-        disj_alphas.data = self.calc_alphas(disj_alphas.data, thold, gamma)
-
-        betas = self.calc_betas(fps, thold, gamma)
-        conj_betas = conj_fps.copy()
-        conj_betas.data = self.calc_betas(conj_fps.data, thold, gamma)
-
         potential_ps = (thold_tp <= conj_tps).sum(1).nonzero()[0]
 
         for p in tqdm(potential_ps, disable=not use_tqdm, desc='Iter pq|r'):
@@ -297,18 +289,21 @@ class PeaViner:
 
             potential_qs = potential_qs_flag.nonzero()[0]
 
-            tps_r, fps_r, alphas_r, betas_r = tps, fps, alphas, betas  # list of values for r
+            tps_r, fps_r = tps, fps  # list of values for r
             tps_p_r, fps_p_r = [mx[p].toarray()[0] for mx in [disj_tps, disj_fps]]  # list of values for r
 
             for q in potential_qs:
                 potential_rs_flg = (fps_r <= thold_fp)
 
-                tp_pq, beta_pq, alpha_p_q = conj_tps[p, q], conj_betas[p, q], disj_alphas[p, q]
+                tp_pq = conj_tps[p, q]
+                alpha_p_q = self.calc_alphas(disj_tps[p, q], thold, gamma)
+                beta_pq = self.calc_betas(conj_fps[p, q], thold, gamma)
 
                 potential_rs_flg &= (0 <= tp_pq + tps_r - beta_pq)
                 if not potential_rs_flg.any():
                     continue
 
+                betas_r = self.calc_betas(fps, thold, gamma)
                 potential_rs_flg &= (0 <= tp_pq + tps_r - betas_r)
                 if not potential_rs_flg.any():
                     continue
@@ -327,7 +322,7 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                alphas_q_r = disj_alphas[q].toarray()[0]
+                alphas_q_r = self.calc_alphas(tps_q_r, thold, gamma)
                 potential_rs_flg &= (fps_p_r + fps_q_r - alphas_q_r <= omg)
                 if not potential_rs_flg.any():
                     continue
@@ -348,13 +343,6 @@ class PeaViner:
 
         thold_tp, thold_fp = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
 
-        alphas = self.calc_alphas(tps, thold, gamma)
-        disj_alphas = disj_tps.copy()
-        disj_alphas.data = self.calc_alphas(disj_alphas.data, thold, gamma)
-
-        conj_betas = conj_fps.copy()
-        conj_betas.data = self.calc_betas(conj_fps.data, thold, gamma)
-
         potential_ps_flg = np.array((thold_tp <= disj_tps).sum(1) > 0).flatten()
         conj_tns = conj_fps.copy()
         conj_tns.data = omg - conj_tns.data
@@ -372,7 +360,7 @@ class PeaViner:
 
             potential_qs = potential_qs_flag.nonzero()[0]
 
-            tps_r, fps_r, alphas_r = tps, fps, alphas  # list of values for r
+            tps_r, fps_r = tps, fps  # list of values for r
             tps_pr, fps_pr, tps_p_r, fps_p_r = [mx[p].toarray()[0] for mx in [conj_tps, conj_fps, disj_tps, disj_fps]]
 
             for q in potential_qs:
@@ -380,7 +368,9 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                fp_p_q, alpha_p_q = disj_fps[p, q], disj_alphas[p, q]
+                fp_p_q = disj_fps[p, q]
+                alpha_p_q = self.calc_alphas(disj_tps[p, q], thold, gamma)
+                alphas_r = self.calc_alphas(tps, thold, gamma)
                 potential_rs_flg &= (fp_p_q + fps_r - alphas_r <= omg)
                 if not potential_rs_flg.any():
                     continue
@@ -389,13 +379,14 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                tps_qr, betas_pr = conj_tps[q].toarray()[0], conj_betas[p].toarray()[0]
+                tps_qr = conj_tps[q].toarray()[0]
+                betas_pr = self.calc_betas(fps_pr, thold, gamma)
                 potential_rs_flg &= (0 <= tps_pr + tps_qr - betas_pr)
                 if not potential_rs_flg.any():
                     continue
 
-                betas_qr = conj_betas[q].toarray()[0]
-                potential_rs_flg &= (0 <= tps_pr + tps_qr - betas_qr)
+                fps_qr = conj_fps[q].toarray()[0]
+                potential_rs_flg &= (fps_qr <= thold_fp)
                 if not potential_rs_flg.any():
                     continue
 
@@ -403,8 +394,8 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                fps_qr = conj_fps[q].toarray()[0]
-                potential_rs_flg &= (fps_qr <= thold_fp)
+                betas_qr = self.calc_betas(fps_qr, thold, gamma)
+                potential_rs_flg &= (0 <= tps_pr + tps_qr - betas_qr)
                 if not potential_rs_flg.any():
                     continue
 
@@ -423,10 +414,6 @@ class PeaViner:
 
         thold_tp, thold_fp = self.calc_thold_tpfp(gamma, thold, 'Jaccard')
 
-        betas = self.calc_betas(fps, thold, gamma)
-        disj_betas = disj_fps.copy()
-        disj_betas.data = self.calc_betas(disj_fps.data, thold, gamma)
-
         disj_tns = disj_fps.copy()
         disj_tns.data = omg - disj_tns.data
         thold_tn = omg - thold_fp
@@ -443,8 +430,8 @@ class PeaViner:
 
             potential_qs = potential_qs_flag.nonzero()[0]
 
-            tp_p, beta_p = tps[p], betas[p]
-            tps_r, betas_r = tps, betas
+            tp_p = tps[p]
+            tps_r = tps
             fps_p_r = disj_fps[p].toarray()[0]
 
             for q in potential_qs:
@@ -452,11 +439,13 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                tp_p_q, beta_p_q = disj_tps[p, q], disj_betas[p, q]
+                tp_p_q = disj_tps[p, q]
+                beta_p_q = self.calc_betas(disj_fps[p, q], thold, gamma)
                 potential_rs_flg &= (0 <= tp_p_q + tps_r - beta_p_q)
                 if not potential_rs_flg.any():
                     continue
 
+                betas = betas_r = self.calc_betas(fps, thold, gamma)
                 potential_rs_flg &= (0 <= tp_p_q + tps_r - betas_r)
                 if not potential_rs_flg.any():
                     continue
@@ -472,17 +461,18 @@ class PeaViner:
                 if not potential_rs_flg.any():
                     continue
 
-                betas_p_r = disj_betas[p].toarray()[0]
+                betas_p_r = self.calc_betas(fps_p_r, thold, gamma)
                 potential_rs_flg &= (0 <= tps_p_r + tp_q - betas_p_r)
                 if not potential_rs_flg.any():
                     continue
 
                 tps_q_r = disj_tps[q].toarray()[0]
+                beta_p = betas[p]
                 potential_rs_flg &= (0 <= tps_q_r + tp_p - beta_p)
                 if not potential_rs_flg.any():
                     continue
 
-                betas_q_r = disj_betas[q].toarray()[0]
+                betas_q_r = self.calc_betas(fps_q_r, thold, gamma)
                 potential_rs_flg &= (0 <= tps_q_r + tp_p - betas_q_r)
                 if not potential_rs_flg.any():
                     continue

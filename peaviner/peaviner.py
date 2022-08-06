@@ -130,10 +130,7 @@ class PeaViner:
             sparse.csr_matrix((np.array(data), (row, col)), shape=(n_exts, n_exts))/len(self.y)
             for data in [conj_data_tp, conj_data_fp, disj_data_tp, disj_data_fp]
         ]
-        #conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx = [
-        #    mx + mx.T
-        #    for mx in [conj_tp_mx, conj_fp_mx, disj_tp_mx, disj_fp_mx]
-        #]
+
         assert len(conj_tp_mx.data) == len(conj_fp_mx.data)
         assert len(disj_tp_mx.data) == len(disj_fp_mx.data)
 
@@ -573,8 +570,10 @@ class PeaViner:
             elif t == 3:
                 gen = self.iterate_potentials_type3_3(
                     thold, thold_tp, thold_fp, tps, fps, conj_tps, conj_fps, disj_tps, disj_fps, use_tqdm)
-            else:  # t == 4:
+            elif t == 4:
                 gen = self.iterate_potentials_type3_4(thold, thold_fp, tps, fps, disj_tps, disj_fps, use_tqdm)
+            else:
+                raise ValueError(f'Unsupported type of premise: {t}')
             next(gen)
 
             while True:
@@ -604,7 +603,6 @@ class PeaViner:
                         thold = best_premises[-1][2]
                         thold_tp, thold_fp = self.calc_thold_tpfp(self.gamma, thold, score_name)
 
-            #best_premises = sorted(best_premises, key=lambda prem_data: -prem_data[2])[:k]
         best_premises = tuple(best_premises)
 
         if return_n_iters:

@@ -41,7 +41,8 @@ class PeaViner:
             stats.index.name = 'extent_idx'
         return stats
 
-    def generate_diextents(self, extents: Tuple[fbitarray, ...] = None, operations: tuple = ('^', 'v'), use_tqdm=False):
+    def generate_diextents(self, extents: Tuple[fbitarray, ...] = None, operations: tuple = ('^', 'v'), use_tqdm=False)\
+            -> Tuple[Tuple[fbitarray, ...], Tuple[Tuple[int, int, str], ...]]:
         extents = extents if extents is not None else self.atom_extents
 
         diextents_stat = {}

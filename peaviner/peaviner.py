@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple, FrozenSet, Iterator, Generator
+from typing import Tuple, FrozenSet, Iterator, Generator, Union
 
 import numpy as np
 from scipy import sparse
@@ -545,9 +545,12 @@ class PeaViner:
             tps: np.ndarray, fps: np.ndarray,
             conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
             disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
+            update_thold: bool = True, return_n_iters: bool = False,
             types=(1, 2, 3, 4), use_tqdm: bool = False
-    ) -> Tuple[Tuple[Tuple[int, int, int], int, float], ...]:
-        thold_tp, thold_fp = self.calc_thold_tpfp(self.gamma, thold, 'Jaccard')
+    ) -> Union[Tuple[Tuple[Tuple[int, int, int], int, float], ...],
+         Tuple[Tuple[Tuple[Tuple[int, int, int], int, float], ...], int]]:
+        score_name = 'Jaccard'
+        thold_tp, thold_fp = self.calc_thold_tpfp(self.gamma, thold, score_name)
 
         aexts = self.atom_extents
         ext_f_dict = {
@@ -557,6 +560,7 @@ class PeaViner:
             4: lambda p, q, r: aexts[p] | aexts[q] | aexts[r]
         }
 
+        n_iters = 0
         best_premises = []
         for t in types:
             ext_f = ext_f_dict[t]
@@ -579,11 +583,30 @@ class PeaViner:
                 except StopIteration:
                     break
 
+                n_iters += 1
                 ext = ext_f(*comb)
                 score = scores.meas_jacc(ext, self.y)
                 if score >= thold:
-                    best_premises.append((comb, t, score))
+                    i = 0
+                    for prem_data in best_premises:
+                        if prem_data[2] < score:
+                            break
+                        i += 1
+                    best_premises.insert(i, (comb, t, score))
 
-            best_premises = sorted(best_premises, key=lambda prem_data: -prem_data[2])[:k]
+                    if update_thold:
+                        try:
+                            while True:
+                                best_premises.pop(k)
+                        except IndexError:
+                            pass
 
-        return tuple(best_premises)
+                        thold = best_premises[-1][2]
+                        thold_tp, thold_fp = self.calc_thold_tpfp(self.gamma, thold, score_name)
+
+            #best_premises = sorted(best_premises, key=lambda prem_data: -prem_data[2])[:k]
+        best_premises = tuple(best_premises)
+
+        if return_n_iters:
+            return best_premises, n_iters
+        return best_premises

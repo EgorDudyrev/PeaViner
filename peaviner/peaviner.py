@@ -210,7 +210,7 @@ class PeaViner:
 
     @staticmethod
     def calc_betas(fps: np.ndarray, thold: float, gamma: float) -> np.ndarray:
-        return thold/(gamma + fps)
+        return thold*(gamma + fps)
 
     def iterate_potentials_type3_1(
             self,

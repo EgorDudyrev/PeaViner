@@ -67,3 +67,21 @@ class PeaClassifier:
             preds = pe | qe | re
 
         return preds
+
+    def explain(self, feature_names: Tuple[str, ...] = None) -> str:
+        assert self.type in {1, 2, 3, 4}
+
+        prem_fis = [f_i for (f_i, _, _) in self.premises]
+        feat_names = [feature_names[f_i] if feature_names else f"f_{f_i}" for f_i in prem_fis]
+
+        p, q, r = [f"{fname} {op} {thold}" for fname, (f_i, op, thold) in zip(feat_names, self.premises)]
+
+        if self.type == 1:
+            expl = f"{p} AND {q} AND {r}"
+        elif self.type == 2:
+            expl = f"{p} AND {q} OR {r}"
+        elif self.type == 3:
+            expl = f"( {p} OR {q} ) AND {r}"
+        else:  # self.type == 4:
+            expl = f"{p} OR {q} OR {r}"
+        return expl

@@ -2,7 +2,7 @@
 
 Myocardial infarction complications Data Set is taken from UCI Machine Learning Repository: [https://archive.ics.uci.edu/ml/datasets/Myocardial+infarction+complications]().
 
-## Source:
+## Source
 
 Creators of database:
 S.E. Golovenkin, V.A. Shulman, D.A. Rossiev, P.A. Shesternya, S.Yu. Nikulina, Yu.V. Orlova: Professor V.F. Voino-Yasenetsky Krasnoyarsk State Medical University;

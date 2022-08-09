@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import enum
 from typing import Tuple, FrozenSet, Iterator, Generator, Union
 
 import numpy as np
@@ -7,7 +8,23 @@ from tqdm import tqdm
 from bitarray import frozenbitarray as fbitarray
 from . import scores
 
-IntPremType = Tuple[int, str, float]  # Feature_id, '>=' or '<', numeric threshold
+
+class EnumContainMeta(enum.EnumMeta):
+    def __contains__(cls, item):
+        try:
+            cls(item)
+        except ValueError:
+            return False
+        else:
+            return True
+
+
+class Num2BinOperations(enum.Enum, metaclass=EnumContainMeta):
+    GEQ = '>='
+    LT = '<'
+
+
+IntPremType = Tuple[int, Num2BinOperations, float]  # Feature_id, '>=' or '<', numeric threshold
 
 
 @dataclass(repr=False)
@@ -49,7 +66,7 @@ class PeaViner:
 
         if use_tqdm:
             n_ops = len(operations)
-            pbar = tqdm(total=len(extents)*(len(extents)-1)//2 * n_ops)
+            pbar = tqdm(total=len(extents)*(len(extents)-1)//2 * n_ops, desc='Generate pq, p|q')
 
         for i, a in enumerate(extents):
             for j, b in enumerate(extents[i+1:]):
@@ -94,7 +111,7 @@ class PeaViner:
         conj_data_tp, conj_data_fp, disj_data_tp, disj_data_fp = [], [], [], []
 
         if use_tqdm:
-            pbar = tqdm(total=n_exts*(n_exts-1)//2)
+            pbar = tqdm(total=n_exts*(n_exts-1)//2, desc='Compute stats for pq, p|q')
 
         for i, a in enumerate(extents):
             for j, b in enumerate(extents[i+1:]):
@@ -151,7 +168,7 @@ class PeaViner:
         extents_i_map, extents_prem_list = {}, []  # extent -> extent_id
 
         ext_i = 0
-        for col_i, col in tqdm(enumerate(X.T), total=X.shape[1], disable=not use_tqdm):
+        for col_i, col in tqdm(enumerate(X.T), total=X.shape[1], disable=not use_tqdm, desc="Generate p's"):
             vals = np.sort(np.unique(col))
             vals = vals[~np.isnan(vals)]
 
@@ -163,7 +180,7 @@ class PeaViner:
 
                 ext_chain_geq.append(ext)
 
-                p_geq, p_ngeq = (col_i, '>=', v), (col_i, 'not >=', v)
+                p_geq, p_ngeq = (col_i, '>=', v), (col_i, '<', v)
 
                 if ext in extents_i_map:
                     ext_i_ = extents_i_map[ext]

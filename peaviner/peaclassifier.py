@@ -5,8 +5,7 @@ from typing import Tuple, Optional
 
 import numpy as np
 
-from .peaviner import IntPremType
-from .peaviner import PeaViner
+from .peaviner import IntPremType, Num2BinOperations, PeaViner
 
 
 @dataclass(repr=True)
@@ -17,7 +16,7 @@ class PeaClassifier:
     def fit(self, X: np.ndarray, y: np.ndarray, n_classifiers: int = 1, use_tqdm: bool = False)\
             -> Optional[Tuple[PeaClassifier, ...]]:
         pv = PeaViner()
-        pv.load_dataset(X, y)
+        pv.load_dataset(X, y, use_tqdm=use_tqdm)
         conj_tp_stat, conj_fp_stat, disj_tp_stat, disj_fp_stat = pv.compute_pairwise_tpfp_stats(use_tqdm=use_tqdm)
 
         aext_tps, aext_fps, aext_jaccs = pv.form_extent_stats(
@@ -53,9 +52,11 @@ class PeaClassifier:
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         assert self.type in {1, 2, 3, 4}, f'Unsupported type value: {self.type}'
-        assert all([op in {'>=', '<'} for (_, op, _) in self.premises]), 'Only ">=" and "<" operations are supported'
+        assert all([op in Num2BinOperations for (_, op, _) in self.premises]),\
+            f'Only operations from {tuple([x.value for x in Num2BinOperations])} are supported'
 
-        pe, qe, re = [{'>=': np.greater_equal, '<': np.less}[op](X[:, f_id], th) for (f_id, op, th) in self.premises]
+        opers_dict = {Num2BinOperations.GEQ.value: np.greater_equal, Num2BinOperations.LT.value: np.less}
+        pe, qe, re = [opers_dict[op](X[:, f_id], th) for (f_id, op, th) in self.premises]
 
         if self.type == 1:
             preds = pe & qe & re

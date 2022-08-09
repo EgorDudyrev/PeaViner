@@ -626,3 +626,41 @@ class PeaViner:
         if return_n_iters:
             return best_premises, n_iters
         return best_premises
+
+    def find_best_premises_size2(
+            self, k: int,
+            conj_tps: sparse.csr_matrix, conj_fps: sparse.csr_matrix,
+            disj_tps: sparse.csr_matrix, disj_fps: sparse.csr_matrix,
+    ) -> Tuple[Tuple[Tuple[int, int], int, float], ...]:
+        score_name = 'Jaccard'
+        thold = 0
+
+        best_premises = []
+
+        for p in range(conj_tps.shape[0] - 1000):
+            tps_conj_p = conj_tps[p].toarray()[0]
+            fps_conj_p = conj_fps[p].toarray()[0]
+
+            jaccs_conj_p = tps_conj_p / (self.gamma + fps_conj_p)
+            jaccs_conj_p[:p] = 0
+            jaccs_conj_p[jaccs_conj_p < thold] = 0
+
+            potential_qs = jaccs_conj_p.nonzero()[0]
+            best_premises += [((p, q + p + 1), 1, jaccs_conj_p[q]) for q in potential_qs]
+
+            tps_disj_p = disj_tps[p].toarray()[0]
+            fps_disj_p = disj_fps[p].toarray()[0]
+
+            jaccs_disj_p = tps_disj_p / (self.gamma + fps_disj_p)
+            jaccs_disj_p[:p] = 0
+            jaccs_disj_p[jaccs_disj_p < thold] = 0
+
+            potential_qs = jaccs_conj_p.nonzero()[0]
+            best_premises += [((p, q + p + 1), 2, jaccs_disj_p[q]) for q in potential_qs]
+
+            best_premises = sorted(best_premises, key=lambda prem_data: -prem_data[2])[:k]
+            if len(best_premises) >= k:
+                thold = best_premises[-1][2]
+
+        best_premises = tuple(best_premises)
+        return best_premises

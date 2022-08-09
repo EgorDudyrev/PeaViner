@@ -23,9 +23,10 @@ class PeaClassifier:
             scores_=['tp_perc', 'fp_perc', 'Jaccard'], dataframe=False).T
         aext_jaccs = np.sort(aext_jaccs)[-n_classifiers:]
 
-        diexts = pv.generate_diextents()[0]  # TODO: Optimize. using conj_tp_stat etc
-        diexts_jaccs = pv.form_extent_stats(extents=diexts, scores_=['Jaccard'], dataframe=False).flatten()
-        diexts_jaccs = np.sort(diexts_jaccs)[-n_classifiers:]
+        best_diext_data = pv.find_best_premises_size2(
+            n_classifiers, conj_tp_stat, conj_fp_stat, disj_tp_stat, disj_fp_stat)
+        diexts_jaccs = [score for (comb, op, score) in best_diext_data]
+
         thold = np.sort(list(aext_jaccs)+list(diexts_jaccs))[-n_classifiers:][0]
 
         best_premises_ids_list = pv.find_best_premises_size3(

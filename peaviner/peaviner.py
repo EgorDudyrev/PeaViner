@@ -31,7 +31,7 @@ IntPremType = Tuple[int, Num2BinOperations, float]  # Feature_id, '>=' or '<', n
 class PeaViner:
     gamma: float = None
     atom_premises: Tuple[FrozenSet[IntPremType], ...] = None  # For each atomic extent, list its premises
-    atom_extents: Tuple[fbitarray, ...] = None  # Tuple of extents that can be obtained by a single premise
+    atom_extents: Tuple[fbitarray, ...] = None  # Tuple of extents that can be obtainedext_ by a single premise
     y: fbitarray = None  # Target labels
     score_func: str = 'Jaccard'  # Scoring function to maximize
 
@@ -176,7 +176,7 @@ class PeaViner:
             for v in vals:
                 ext = col >= v
                 ext = fbitarray(ext.tolist())
-                ext_neg = ~ext
+                ext_neg = fbitarray((col < v).tolist())
 
                 ext_chain_geq.append(ext)
 
@@ -185,18 +185,18 @@ class PeaViner:
                 if ext in extents_i_map:
                     ext_i_ = extents_i_map[ext]
                     extents_prem_list[ext_i_].add(p_geq)
+                else:
+                    extents_i_map[ext] = ext_i
+                    extents_prem_list.append({p_geq})
+                    ext_i += 1
 
+                if ext_neg in extents_i_map:
                     ext_i_neg_ = extents_i_map[ext_neg]
                     extents_prem_list[ext_i_neg_].add(p_ngeq)
-                    continue
-
-                extents_i_map[ext] = ext_i
-                extents_prem_list.append({p_geq})
-                ext_i += 1
-
-                extents_i_map[ext_neg] = ext_i
-                extents_prem_list.append({p_ngeq})
-                ext_i += 1
+                else:
+                    extents_i_map[ext_neg] = ext_i
+                    extents_prem_list.append({p_ngeq})
+                    ext_i += 1
 
             assert ext_i == len(extents_i_map)
 

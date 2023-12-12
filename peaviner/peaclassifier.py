@@ -87,3 +87,7 @@ class PeaClassifier:
         else:  # self.type == 4:
             expl = f"{p} OR {q} OR {r}"
         return expl
+
+    @staticmethod
+    def get_atomic_premises(self, X: np.ndarray):
+        return PeaViner._generate_atomic_extents(X)[1]

@@ -4,7 +4,7 @@ from typing import Tuple, FrozenSet, Iterator, Generator, Union
 
 import numpy as np
 from scipy import sparse
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from bitarray import frozenbitarray as fbitarray
 from . import scores
 

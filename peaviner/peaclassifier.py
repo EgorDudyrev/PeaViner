@@ -89,5 +89,5 @@ class PeaClassifier:
         return expl
 
     @staticmethod
-    def get_atomic_premises(self, X: np.ndarray):
+    def get_atomic_premises(X: np.ndarray):
         return PeaViner._generate_atomic_extents(X)[1]
